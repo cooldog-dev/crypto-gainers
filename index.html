@@ -75,6 +75,14 @@
         const maxRetries = 3;
         let autoRefreshInterval;
 
+        // List of stablecoin IDs to exclude
+        const stablecoinIds = [
+            'tether',           // USDT
+            'usd-coin',        // USDC
+            'dai',             // DAI
+            'first-digital-usd' // FDUSD
+        ];
+
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
             statusElement.className = 'loading';
@@ -90,8 +98,11 @@
 
                 const coins = await response.json();
                 
+                // Filter out stablecoins
+                const filteredCoins = coins.filter(coin => !stablecoinIds.includes(coin.id));
+
                 // Sort by 24h price change and get top 10
-                const topGainers = coins
+                const topGainers = filteredCoins
                     .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
                     .slice(0, 10);
 
