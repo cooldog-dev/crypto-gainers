@@ -78,9 +78,11 @@
         // Function to determine if a coin is a stablecoin based on price proximity to $1
         function isStablecoin(coin) {
             const price = coin.current_price;
-            // Consider it a stablecoin if price is between $0.95 and $1.05
-            return price >= 0.95 && price <= 1.05;
+            return price >= 0.95 && price <= 1.05; // Between $0.95 and $1.05
         }
+
+        // Minimum volume threshold (50 million USD)
+        const minVolume = 50000000;
 
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
@@ -97,9 +99,79 @@
 
                 const coins = await response.json();
 
-                // Filter out stablecoins based on price
-                const filteredCoins = coins.filter(coin => !isStablecoin(coin));
+                // Filter out stablecoins and coins with volume < 50M USD
+                const filteredCoins = coins.filter(coin => 
+                    !isStablecoin(coin) && // Exclude stablecoins
+                    coin.total_volume >= minVolume // Volume >= 50M USD
+                );
 
                 // Sort by 24h price change and get top 10
                 const topGainers = filteredCoins
-                    .sort((a,
+                    .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
+                    .slice(0, 10);
+
+                // Update table
+                const tbody = document.getElementById('gainersBody');
+                tbody.innerHTML = '';
+
+                topGainers.forEach((coin, index) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${coin.name}</td>
+                        <td>${coin.symbol.toUpperCase()}</td>
+                        <td>$${coin.current_price.toLocaleString()}</td>
+                        <td class="positive">+${coin.price_change_percentage_24h.toFixed(2)}%</td>
+                        <td>$${coin.market_cap.toLocaleString()}</td>
+                        <td>$${coin.total_volume.toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Update status
+                const timestamp = new Date().toLocaleString();
+                statusElement.textContent = `Last updated: ${timestamp}`;
+                statusElement.className = '';
+                retryCount = 0; // Reset retry count on success
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    statusElement.textContent = `Error loading data. Retrying (${retryCount}/${maxRetries})...`;
+                    statusElement.className = 'error';
+                    setTimeout(fetchTopGainers, 2000 * retryCount); // Exponential backoff
+                } else {
+                    statusElement.textContent = 'Failed to load data after multiple attempts.';
+                    statusElement.className = 'error';
+                }
+            }
+        }
+
+        // Start auto-refresh (every 5 minutes)
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(fetchTopGainers, 5 * 60 * 1000);
+        }
+
+        // Stop auto-refresh when page is not visible
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                clearInterval(autoRefreshInterval);
+            } else {
+                startAutoRefresh();
+            }
+        });
+
+        // Initial fetch and setup
+        fetchTopGainers();
+        startAutoRefresh();
+
+        // Manual refresh button
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            fetchTopGainers();
+            startAutoRefresh(); // Reset the auto-refresh timer
+        });
+    </script>
+</body>
+</html>
