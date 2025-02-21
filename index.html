@@ -25,10 +25,10 @@
             background-color: #f5f5f5;
         }
         .positive {
-            color: #00cc00; /* Green for positive changes */
+            color: #00cc00;
         }
         .negative {
-            color: #dc3545; /* Red for zero or negative changes */
+            color: #dc3545;
         }
         .flash-up {
             animation: flashUp 1s ease-out;
@@ -37,11 +37,11 @@
             animation: flashDown 1s ease-out;
         }
         @keyframes flashUp {
-            0% { background-color: #ccffcc; } /* Light green */
+            0% { background-color: #ccffcc; }
             100% { background-color: transparent; }
         }
         @keyframes flashDown {
-            0% { background-color: #ffcccc; } /* Light red */
+            0% { background-color: #ffcccc; }
             100% { background-color: transparent; }
         }
         .coin-logo {
@@ -50,15 +50,16 @@
             vertical-align: middle;
             margin-right: 5px;
         }
-        #refreshBtn {
+        #refreshBtn, #downloadBtn {
             padding: 10px 20px;
             background-color: #4CAF50;
             color: white;
             border: none;
             cursor: pointer;
             margin-top: 20px;
+            margin-right: 10px;
         }
-        #refreshBtn:hover {
+        #refreshBtn:hover, #downloadBtn:hover {
             background-color: #45a049;
         }
         #status {
@@ -91,21 +92,21 @@
     </table>
     <div id="status"></div>
     <button id="refreshBtn">Refresh Data</button>
+    <button id="downloadBtn">Download for TradingView</button>
 
     <script>
         const statusElement = document.getElementById('status');
         let retryCount = 0;
         const maxRetries = 3;
         let autoRefreshInterval;
-        let previousRankings = {}; // Store previous coin rankings
+        let previousRankings = {};
+        let latestGainers = []; // Store latest gainers for download
 
-        // Function to determine if a coin is a stablecoin
         function isStablecoin(coin) {
             const price = coin.current_price;
-            return price >= 0.95 && price <= 1.05; // Between $0.95 and $1.05
+            return price >= 0.95 && price <= 1.05;
         }
 
-        // Minimum volume threshold (50 million USD)
         const minVolume = 50000000;
 
         async function fetchTopGainers() {
@@ -125,20 +126,18 @@
                 const coins = await response.json();
                 console.log('Total coins received:', coins.length);
 
-                // Filter out stablecoins and coins with volume < 50M USD
                 const filteredCoins = coins.filter(coin => 
-                    !isStablecoin(coin) && // Exclude stablecoins
-                    coin.total_volume >= minVolume // Volume >= 50M USD
+                    !isStablecoin(coin) && coin.total_volume >= minVolume
                 );
                 console.log('Filtered coins:', filteredCoins.length);
 
-                // Sort by 24h price change and get top 10
                 const topGainers = filteredCoins
                     .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
                     .slice(0, 10);
                 console.log('Top gainers:', topGainers.length);
 
-                // Update table
+                latestGainers = topGainers; // Store for download
+
                 const tbody = document.getElementById('gainersBody');
                 tbody.innerHTML = '';
 
@@ -156,12 +155,11 @@
                         const previousRank = previousRankings[coin.id] || null;
                         let rowClass = '';
 
-                        // Determine if coin moved up or down
                         if (previousRank !== null) {
                             if (currentRank < previousRank) {
-                                rowClass = 'flash-up'; // Moved up (rank decreased)
+                                rowClass = 'flash-up';
                             } else if (currentRank > previousRank) {
-                                rowClass = 'flash-down'; // Moved down (rank increased)
+                                rowClass = 'flash-down';
                             }
                         }
 
@@ -177,7 +175,6 @@
                         `;
                         tbody.appendChild(row);
 
-                        // Update previous rankings
                         previousRankings[coin.id] = currentRank;
                     });
                     const timestamp = new Date().toLocaleString();
@@ -202,13 +199,30 @@
             }
         }
 
-        // Start auto-refresh (every 10 seconds)
-        function startAutoRefresh() {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // 10 seconds
+        function downloadTradingViewFile() {
+            if (latestGainers.length === 0) {
+                alert('No gainers available to download.');
+                return;
+            }
+
+            const symbols = latestGainers.map(coin => `BINANCE:${coin.symbol.toUpperCase()}USDT`);
+            const fileContent = symbols.join('\n');
+            const blob = new Blob([fileContent], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'top_gainers_tradingview.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         }
 
-        // Stop auto-refresh when page is not visible
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // Back to 10 seconds
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 clearInterval(autoRefreshInterval);
@@ -217,15 +231,14 @@
             }
         });
 
-        // Initial fetch and setup
         fetchTopGainers();
         startAutoRefresh();
 
-        // Manual refresh with delay
-        function fetchWithDelay() {
-            setTimeout(fetchTopGainers, 2000); // 2-second delay
-        }
-        document.getElementById('refreshBtn').addEventListener('click', fetchWithDelay);
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            setTimeout(fetchTopGainers, 2000);
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', downloadTradingViewFile);
     </script>
 </body>
 </html>
