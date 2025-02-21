@@ -100,14 +100,14 @@
         const maxRetries = 3;
         let autoRefreshInterval;
         let previousRankings = {};
-        let latestGainers = []; // Store latest gainers for download
+        let latestGainers = [];
 
         function isStablecoin(coin) {
             const price = coin.current_price;
             return price >= 0.95 && price <= 1.05;
         }
 
-        const minVolume = 50000000;
+        const minVolume = 65000000; // Updated to 65 million USD
 
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
@@ -136,13 +136,13 @@
                     .slice(0, 10);
                 console.log('Top gainers:', topGainers.length);
 
-                latestGainers = topGainers; // Store for download
+                latestGainers = topGainers;
 
                 const tbody = document.getElementById('gainersBody');
                 tbody.innerHTML = '';
 
                 if (topGainers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7">No coins meet the criteria (volume ≥ $50M, non-stablecoin).</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7">No coins meet the criteria (volume ≥ $65M, non-stablecoin).</td></tr>';
                     statusElement.textContent = 'No data available matching filters.';
                     statusElement.className = 'error';
                 } else {
@@ -220,7 +220,7 @@
 
         function startAutoRefresh() {
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // Back to 10 seconds
+            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // 10 seconds
         }
 
         document.addEventListener('visibilitychange', () => {
