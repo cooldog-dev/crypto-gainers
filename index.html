@@ -23,6 +23,10 @@
         }
         th {
             background-color: #f5f5f5;
+            cursor: pointer;
+        }
+        th:hover {
+            background-color: #e0e0e0;
         }
         .positive {
             color: #00cc00;
@@ -50,6 +54,17 @@
             vertical-align: middle;
             margin-right: 5px;
         }
+        .sort-arrow {
+            display: inline-block;
+            margin-left: 5px;
+            font-size: 12px;
+        }
+        .sort-arrow.up {
+            color: #00cc00;
+        }
+        .sort-arrow.down {
+            color: #dc3545;
+        }
         #refreshBtn, #downloadBtn {
             padding: 10px 20px;
             background-color: #4CAF50;
@@ -75,7 +90,7 @@
     </style>
 </head>
 <body>
-    <h1>Top 10 Crypto Gainers</h1>
+    <h1>Top 10 Daily Crypto Gainers</h1>
     <table id="gainersTable">
         <thead>
             <tr>
@@ -83,9 +98,18 @@
                 <th>Name</th>
                 <th>Symbol</th>
                 <th>Price (USD)</th>
-                <th>1h Change</th>
-                <th>4h Change</th>
-                <th>24h Change</th>
+                <th>
+                    1h Change
+                    <span class="sort-arrow" id="sort1h" onclick="sortTable('1h')">↑↓</span>
+                </th>
+                <th>
+                    4h Change
+                    <span class="sort-arrow" id="sort4h" onclick="sortTable('4h')">↑↓</span>
+                </th>
+                <th>
+                    24h Change
+                    <span class="sort-arrow" id="sort24h" onclick="sortTable('24h')">↑↓</span>
+                </th>
                 <th>Market Cap (USD)</th>
                 <th>24h Volume (USD)</th>
             </tr>
@@ -103,6 +127,12 @@
         let autoRefreshInterval;
         let previousRankings = {};
         let latestGainers = [];
+        let sortDirection = {
+            '1h': 'desc',
+            '4h': 'desc',
+            '24h': 'desc'
+        };
+        let lastSorted = '24h'; // Default sort by 24h
 
         function isStablecoin(coin) {
             const price = coin.current_price;
@@ -111,11 +141,10 @@
 
         const minVolume = 65000000;
 
-        // Helper function to get historical price for a specific duration
         async function getHistoricalPrice(coinId, hoursAgo) {
             const now = new Date();
-            const timestamp = Math.floor(now.getTime() / 1000); // Current time in seconds
-            const fromTimestamp = timestamp - (hoursAgo * 3600); // Time X hours ago
+            const timestamp = Math.floor(now.getTime() / 1000);
+            const fromTimestamp = timestamp - (hoursAgo * 3600);
 
             try {
                 const response = await fetch(
@@ -127,7 +156,7 @@
                 }
                 const data = await response.json();
                 if (data.prices && data.prices.length > 0) {
-                    return data.prices[data.prices.length - 1][1]; // Use the most recent price in the range
+                    return data.prices[data.prices.length - 1][1];
                 }
                 return null;
             } catch (error) {
@@ -136,18 +165,15 @@
             }
         }
 
-        // Calculate percentage changes for 1h and 4h
         async function calculateTimeChanges(coin) {
             const currentPrice = coin.current_price;
             let oneHourChange = 0, fourHourChange = 0;
 
-            // 1-hour change
             const oneHourAgoPrice = await getHistoricalPrice(coin.id, 1);
             if (oneHourAgoPrice !== null && oneHourAgoPrice !== 0) {
                 oneHourChange = ((currentPrice - oneHourAgoPrice) / oneHourAgoPrice) * 100;
             }
 
-            // 4-hour change
             const fourHoursAgoPrice = await getHistoricalPrice(coin.id, 4);
             if (fourHoursAgoPrice !== null && fourHoursAgoPrice !== 0) {
                 fourHourChange = ((currentPrice - fourHoursAgoPrice) / fourHoursAgoPrice) * 100;
@@ -178,128 +204,29 @@
                 );
                 console.log('Filtered coins:', filteredCoins.length);
 
-                // Calculate additional time changes for each coin
                 const coinsWithChanges = await Promise.all(filteredCoins.map(async coin => {
                     const { oneHourChange, fourHourChange } = await calculateTimeChanges(coin);
                     return { ...coin, oneHourChange, fourHourChange };
                 }));
 
-                const topGainers = coinsWithChanges
-                    .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
-                    .slice(0, 10);
+                let topGainers = [];
+                if (lastSorted === '1h') {
+                    topGainers = coinsWithChanges
+                        .sort((a, b) => sortDirection['1h'] === 'desc' ? 
+                            b.oneHourChange - a.oneHourChange : a.oneHourChange - b.oneHourChange)
+                        .slice(0, 10);
+                } else if (lastSorted === '4h') {
+                    topGainers = coinsWithChanges
+                        .sort((a, b) => sortDirection['4h'] === 'desc' ? 
+                            b.fourHourChange - a.fourHourChange : a.fourHourChange - b.fourHourChange)
+                        .slice(0, 10);
+                } else { // Default to 24h
+                    topGainers = coinsWithChanges
+                        .sort((a, b) => sortDirection['24h'] === 'desc' ? 
+                            b.price_change_percentage_24h - a.price_change_percentage_24h : 
+                            a.price_change_percentage_24h - b.price_change_percentage_24h)
+                        .slice(0, 10);
+                }
                 console.log('Top gainers with changes:', topGainers.map(c => `${c.name}: 1h=${c.oneHourChange.toFixed(2)}%, 4h=${c.fourHourChange.toFixed(2)}%, 24h=${c.price_change_percentage_24h.toFixed(2)}%`));
 
-                latestGainers = topGainers;
-
-                const tbody = document.getElementById('gainersBody');
-                tbody.innerHTML = '';
-
-                if (topGainers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9">No coins meet the criteria (volume ≥ $65M, non-stablecoin).</td></tr>';
-                    statusElement.textContent = 'No data available matching filters.';
-                    statusElement.className = 'error';
-                } else {
-                    topGainers.forEach((coin, index) => {
-                        const row = document.createElement('tr');
-                        const oneHourChange = coin.oneHourChange;
-                        const fourHourChange = coin.fourHourChange;
-                        const twentyFourHourChange = coin.price_change_percentage_24h;
-                        const oneHourDisplay = oneHourChange > 0 ? `+${oneHourChange.toFixed(2)}%` : `${oneHourChange.toFixed(2)}%`;
-                        const fourHourDisplay = fourHourChange > 0 ? `+${fourHourChange.toFixed(2)}%` : `${fourHourChange.toFixed(2)}%`;
-                        const twentyFourHourDisplay = twentyFourHourChange > 0 ? `+${twentyFourHourChange.toFixed(2)}%` : `${twentyFourHourChange.toFixed(2)}%`;
-                        const oneHourClass = oneHourChange > 0 ? 'positive' : 'negative';
-                        const fourHourClass = fourHourChange > 0 ? 'positive' : 'negative';
-                        const twentyFourHourClass = twentyFourHourChange > 0 ? 'positive' : 'negative';
-                        const currentRank = index + 1;
-                        const previousRank = previousRankings[coin.id] || null;
-                        let rowClass = '';
-
-                        if (previousRank !== null) {
-                            if (currentRank < previousRank) {
-                                rowClass = 'flash-up';
-                            } else if (currentRank > previousRank) {
-                                rowClass = 'flash-down';
-                            }
-                        }
-
-                        row.className = rowClass;
-                        row.innerHTML = `
-                            <td>${currentRank}</td>
-                            <td><img src="${coin.image}" alt="${coin.name}" class="coin-logo">${coin.name}</td>
-                            <td>${coin.symbol.toUpperCase()}</td>
-                            <td>$${coin.current_price.toLocaleString()}</td>
-                            <td class="${oneHourClass}">${oneHourDisplay}</td>
-                            <td class="${fourHourClass}">${fourHourDisplay}</td>
-                            <td class="${twentyFourHourClass}">${twentyFourHourDisplay}</td>
-                            <td>$${coin.market_cap.toLocaleString()}</td>
-                            <td>$${coin.total_volume.toLocaleString()}</td>
-                        `;
-                        tbody.appendChild(row);
-
-                        previousRankings[coin.id] = currentRank;
-                    });
-                    const timestamp = new Date().toLocaleString();
-                    statusElement.textContent = `Last updated: ${timestamp} (${topGainers.length} coins displayed)`;
-                    statusElement.className = '';
-                }
-                retryCount = 0;
-
-            } catch (error) {
-                console.error('Fetch error:', error.message);
-                if (retryCount < maxRetries) {
-                    retryCount++;
-                    statusElement.textContent = `Error: ${error.message}. Retrying (${retryCount}/${maxRetries})...`;
-                    statusElement.className = 'error';
-                    setTimeout(fetchTopGainers, 2000 * retryCount);
-                } else {
-                    statusElement.textContent = `Failed to load data: ${error.message}`;
-                    statusElement.className = 'error';
-                    document.getElementById('gainersBody').innerHTML = 
-                        '<tr><td colspan="9">Error loading data. Check console for details.</td></tr>';
-                }
-            }
-        }
-
-        function downloadTradingViewFile() {
-            if (latestGainers.length === 0) {
-                alert('No gainers available to download.');
-                return;
-            }
-
-            const symbols = latestGainers.map(coin => `BINANCE:${coin.symbol.toUpperCase()}USDT`);
-            const fileContent = symbols.join('\n');
-            const blob = new Blob([fileContent], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'top_gainers_tradingview.txt';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
-
-        function startAutoRefresh() {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(fetchTopGainers, 60 * 1000); // 1 minute due to increased API load
-        }
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                clearInterval(autoRefreshInterval);
-            } else {
-                startAutoRefresh();
-            }
-        });
-
-        fetchTopGainers();
-        startAutoRefresh();
-
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            setTimeout(fetchTopGainers, 2000);
-        });
-
-        document.getElementById('downloadBtn').addEventListener('click', downloadTradingViewFile);
-    </script>
-</body>
-</html>
+                latestGainers =
