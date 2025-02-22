@@ -94,24 +94,34 @@
     <table id="gainersTable">
         <thead>
             <tr>
-                <th>Rank</th>
-                <th>Name</th>
-                <th>Symbol</th>
-                <th>Price (USD)</th>
                 <th>
-                    1h Change
-                    <span class="sort-arrow" id="sort1h" onclick="sortTable('1h')">↑↓</span>
+                    Rank
+                    <span class="sort-arrow" id="sortRank" onclick="sortTable('rank')">↑↓</span>
                 </th>
                 <th>
-                    4h Change
-                    <span class="sort-arrow" id="sort4h" onclick="sortTable('4h')">↑↓</span>
+                    Name
+                    <span class="sort-arrow" id="sortName" onclick="sortTable('name')">↑↓</span>
+                </th>
+                <th>
+                    Symbol
+                    <span class="sort-arrow" id="sortSymbol" onclick="sortTable('symbol')">↑↓</span>
+                </th>
+                <th>
+                    Price (USD)
+                    <span class="sort-arrow" id="sortPrice" onclick="sortTable('price')">↑↓</span>
                 </th>
                 <th>
                     24h Change
                     <span class="sort-arrow" id="sort24h" onclick="sortTable('24h')">↑↓</span>
                 </th>
-                <th>Market Cap (USD)</th>
-                <th>24h Volume (USD)</th>
+                <th>
+                    Market Cap (USD)
+                    <span class="sort-arrow" id="sortMarketCap" onclick="sortTable('marketCap')">↑↓</span>
+                </th>
+                <th>
+                    24h Volume (USD)
+                    <span class="sort-arrow" id="sortVolume" onclick="sortTable('volume')">↑↓</span>
+                </th>
             </tr>
         </thead>
         <tbody id="gainersBody"></tbody>
@@ -128,11 +138,15 @@
         let previousRankings = {};
         let latestGainers = [];
         let sortDirection = {
-            '1h': 'desc',
-            '4h': 'desc',
-            '24h': 'desc'
+            'rank': 'asc',
+            'name': 'asc',
+            'symbol': 'asc',
+            'price': 'asc',
+            '24h': 'desc',
+            'marketCap': 'desc',
+            'volume': 'desc'
         };
-        let lastSorted = '24h'; // Default sort by 24h
+        let lastSorted = '24h'; // Default sort by 24h (descending)
 
         function isStablecoin(coin) {
             const price = coin.current_price;
@@ -140,47 +154,6 @@
         }
 
         const minVolume = 65000000;
-
-        async function getHistoricalPrice(coinId, hoursAgo) {
-            const now = new Date();
-            const timestamp = Math.floor(now.getTime() / 1000);
-            const fromTimestamp = timestamp - (hoursAgo * 3600);
-
-            try {
-                const response = await fetch(
-                    `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart/range?vs_currency=usd&from=${fromTimestamp}&to=${timestamp}`
-                );
-                if (!response.ok) {
-                    console.warn(`Historical data for ${coinId} failed: ${response.status}`);
-                    return null;
-                }
-                const data = await response.json();
-                if (data.prices && data.prices.length > 0) {
-                    return data.prices[data.prices.length - 1][1];
-                }
-                return null;
-            } catch (error) {
-                console.error('Error fetching historical price:', error);
-                return null;
-            }
-        }
-
-        async function calculateTimeChanges(coin) {
-            const currentPrice = coin.current_price;
-            let oneHourChange = 0, fourHourChange = 0;
-
-            const oneHourAgoPrice = await getHistoricalPrice(coin.id, 1);
-            if (oneHourAgoPrice !== null && oneHourAgoPrice !== 0) {
-                oneHourChange = ((currentPrice - oneHourAgoPrice) / oneHourAgoPrice) * 100;
-            }
-
-            const fourHoursAgoPrice = await getHistoricalPrice(coin.id, 4);
-            if (fourHoursAgoPrice !== null && fourHoursAgoPrice !== 0) {
-                fourHourChange = ((currentPrice - fourHoursAgoPrice) / fourHoursAgoPrice) * 100;
-            }
-
-            return { oneHourChange, fourHourChange };
-        }
 
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
@@ -204,29 +177,161 @@
                 );
                 console.log('Filtered coins:', filteredCoins.length);
 
-                const coinsWithChanges = await Promise.all(filteredCoins.map(async coin => {
-                    const { oneHourChange, fourHourChange } = await calculateTimeChanges(coin);
-                    return { ...coin, oneHourChange, fourHourChange };
-                }));
-
                 let topGainers = [];
-                if (lastSorted === '1h') {
-                    topGainers = coinsWithChanges
-                        .sort((a, b) => sortDirection['1h'] === 'desc' ? 
-                            b.oneHourChange - a.oneHourChange : a.oneHourChange - b.oneHourChange)
+                if (lastSorted === 'rank') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['rank'] === 'asc' ? 
+                            a.market_cap_rank - b.market_cap_rank : b.market_cap_rank - a.market_cap_rank)
                         .slice(0, 10);
-                } else if (lastSorted === '4h') {
-                    topGainers = coinsWithChanges
-                        .sort((a, b) => sortDirection['4h'] === 'desc' ? 
-                            b.fourHourChange - a.fourHourChange : a.fourHourChange - b.fourHourChange)
+                } else if (lastSorted === 'name') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['name'] === 'asc' ? 
+                            a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
                         .slice(0, 10);
-                } else { // Default to 24h
-                    topGainers = coinsWithChanges
+                } else if (lastSorted === 'symbol') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['symbol'] === 'asc' ? 
+                            a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol))
+                        .slice(0, 10);
+                } else if (lastSorted === 'price') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['price'] === 'asc' ? 
+                            a.current_price - b.current_price : b.current_price - a.current_price)
+                        .slice(0, 10);
+                } else if (lastSorted === '24h') {
+                    topGainers = filteredCoins
                         .sort((a, b) => sortDirection['24h'] === 'desc' ? 
                             b.price_change_percentage_24h - a.price_change_percentage_24h : 
                             a.price_change_percentage_24h - b.price_change_percentage_24h)
                         .slice(0, 10);
+                } else if (lastSorted === 'marketCap') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['marketCap'] === 'desc' ? 
+                            b.market_cap - a.market_cap : a.market_cap - b.market_cap)
+                        .slice(0, 10);
+                } else if (lastSorted === 'volume') {
+                    topGainers = filteredCoins
+                        .sort((a, b) => sortDirection['volume'] === 'desc' ? 
+                            b.total_volume - a.total_volume : a.total_volume - b.total_volume)
+                        .slice(0, 10);
                 }
-                console.log('Top gainers with changes:', topGainers.map(c => `${c.name}: 1h=${c.oneHourChange.toFixed(2)}%, 4h=${c.fourHourChange.toFixed(2)}%, 24h=${c.price_change_percentage_24h.toFixed(2)}%`));
 
-                latestGainers =
+                latestGainers = topGainers;
+
+                const tbody = document.getElementById('gainersBody');
+                tbody.innerHTML = '';
+
+                if (topGainers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">No coins meet the criteria (volume ≥ $65M, non-stablecoin).</td></tr>';
+                    statusElement.textContent = 'No data available matching filters.';
+                    statusElement.className = 'error';
+                } else {
+                    topGainers.forEach((coin, index) => {
+                        const row = document.createElement('tr');
+                        const change = coin.price_change_percentage_24h;
+                        const changeDisplay = change > 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`;
+                        const changeClass = change > 0 ? 'positive' : 'negative';
+                        const currentRank = index + 1;
+                        const previousRank = previousRankings[coin.id] || null;
+                        let rowClass = '';
+
+                        if (previousRank !== null) {
+                            if (currentRank < previousRank) {
+                                rowClass = 'flash-up';
+                            } else if (currentRank > previousRank) {
+                                rowClass = 'flash-down';
+                            }
+                        }
+
+                        row.className = rowClass;
+                        row.innerHTML = `
+                            <td>${currentRank}</td>
+                            <td><img src="${coin.image}" alt="${coin.name}" class="coin-logo">${coin.name}</td>
+                            <td>${coin.symbol.toUpperCase()}</td>
+                            <td>$${coin.current_price.toLocaleString()}</td>
+                            <td class="${changeClass}">${changeDisplay}</td>
+                            <td>$${coin.market_cap.toLocaleString()}</td>
+                            <td>$${coin.total_volume.toLocaleString()}</td>
+                        `;
+                        tbody.appendChild(row);
+
+                        previousRankings[coin.id] = currentRank;
+                    });
+                    const timestamp = new Date().toLocaleString();
+                    statusElement.textContent = `Last updated: ${timestamp} (${topGainers.length} coins displayed)`;
+                    statusElement.className = '';
+                }
+                retryCount = 0;
+
+            } catch (error) {
+                console.error('Fetch error:', error.message);
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    statusElement.textContent = `Error: ${error.message}. Retrying (${retryCount}/${maxRetries})...`;
+                    statusElement.className = 'error';
+                    setTimeout(fetchTopGainers, 2000 * retryCount);
+                } else {
+                    statusElement.textContent = `Failed to load data: ${error.message}`;
+                    statusElement.className = 'error';
+                    document.getElementById('gainersBody').innerHTML = 
+                        '<tr><td colspan="7">Error loading data. Check console for details.</td></tr>';
+                }
+            }
+        }
+
+        function sortTable(column) {
+            lastSorted = column;
+            sortDirection[column] = sortDirection[column] === 'asc' ? 'desc' : 'asc';
+
+            const arrows = document.querySelectorAll('.sort-arrow');
+            arrows.forEach(arrow => arrow.textContent = '↑↓');
+            const currentArrow = document.getElementById(`sort${column.charAt(0).toUpperCase() + column.slice(1)}`);
+            currentArrow.textContent = sortDirection[column] === 'desc' ? '↑' : '↓';
+            currentArrow.className = `sort-arrow ${sortDirection[column] === 'desc' ? 'up' : 'down'}`;
+
+            fetchTopGainers();
+        }
+
+        function downloadTradingViewFile() {
+            if (latestGainers.length === 0) {
+                alert('No gainers available to download.');
+                return;
+            }
+
+            const symbols = latestGainers.map(coin => `BINANCE:${coin.symbol.toUpperCase()}USDT`);
+            const fileContent = symbols.join('\n');
+            const blob = new Blob([fileContent], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'top_gainers_tradingview.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // 10 seconds
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                clearInterval(autoRefreshInterval);
+            } else {
+                startAutoRefresh();
+            }
+        });
+
+        fetchTopGainers();
+        startAutoRefresh();
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            setTimeout(fetchTopGainers, 2000);
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', downloadTradingViewFile);
+    </script>
+</body>
+</html>
