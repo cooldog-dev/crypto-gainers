@@ -83,7 +83,7 @@
                 <th>Name</th>
                 <th>Symbol</th>
                 <th>Price (USD)</th>
-                <th>24h Change</th>
+                <th>24h Change (from Daily Open)</th>
                 <th>Market Cap (USD)</th>
                 <th>24h Volume (USD)</th>
             </tr>
@@ -107,14 +107,57 @@
             return price >= 0.95 && price <= 1.05;
         }
 
-        const minVolume = 65000000; // Updated to 65 million USD
+        const minVolume = 65000000;
+
+        // Helper function to determine daily open time (1:00 AM UTC or 2:00 AM UTC during DST)
+        function getDailyOpenTime() {
+            const now = new Date();
+            const year = now.getUTCFullYear();
+            const lastSundayMarch = new Date(year, 2, 31 - (new Date(year, 2, 31).getUTCDay() || 7)); // Last Sunday in March
+            const lastSundayOctober = new Date(year, 9, 31 - (new Date(year, 9, 31).getUTCDay() || 7)); // Last Sunday in October
+
+            // DST in Europe/UTC+1: From last Sunday in March to last Sunday in October, clocks are at UTC+2 (2:00 AM UTC)
+            const isDST = now >= lastSundayMarch && now < lastSundayOctober;
+            const openHourUTC = isDST ? 2 : 1; // 2:00 AM UTC during DST, 1:00 AM UTC otherwise
+
+            const startOfDayUTC = new Date(Date.UTC(year, now.getUTCMonth(), now.getUTCDate(), openHourUTC, 0, 0));
+            return Math.floor(startOfDayUTC.getTime() / 1000); // Convert to seconds
+        }
+
+        async function getPriceAtOpen(coinId) {
+            const openTimestamp = getDailyOpenTime();
+            const fromTimestamp = openTimestamp - 86400; // 24 hours prior
+
+            try {
+                const response = await fetch(
+                    `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart/range?vs_currency=usd&from=${fromTimestamp}&to=${openTimestamp}`
+                );
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch historical data for ${coinId}: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.prices && data.prices.length > 0) {
+                    return data.prices[0][1]; // Return price at the daily open
+                }
+                return null;
+            } catch (error) {
+                console.error('Error fetching historical price:', error);
+                return null;
+            }
+        }
+
+        async function calculateCustom24hChange(coin) {
+            const historicalPrice = await getPriceAtOpen(coin.id);
+            if (historicalPrice === null || historicalPrice === 0) return 0;
+            const currentPrice = coin.current_price;
+            return ((currentPrice - historicalPrice) / historicalPrice) * 100;
+        }
 
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
             statusElement.className = 'loading';
 
             try {
-                console.log('Fetching data from CoinGecko...');
                 const response = await fetch(
                     'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=350&page=1&sparkline=false'
                 );
@@ -124,17 +167,19 @@
                 }
 
                 const coins = await response.json();
-                console.log('Total coins received:', coins.length);
 
                 const filteredCoins = coins.filter(coin => 
                     !isStablecoin(coin) && coin.total_volume >= minVolume
                 );
-                console.log('Filtered coins:', filteredCoins.length);
 
-                const topGainers = filteredCoins
-                    .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
+                const coinsWithCustomChanges = await Promise.all(filteredCoins.map(async coin => {
+                    const customChange = await calculateCustom24hChange(coin);
+                    return { ...coin, custom_24h_change: customChange };
+                }));
+
+                const topGainers = coinsWithCustomChanges
+                    .sort((a, b) => b.custom_24h_change - a.custom_24h_change)
                     .slice(0, 10);
-                console.log('Top gainers:', topGainers.length);
 
                 latestGainers = topGainers;
 
@@ -148,7 +193,7 @@
                 } else {
                     topGainers.forEach((coin, index) => {
                         const row = document.createElement('tr');
-                        const change = coin.price_change_percentage_24h;
+                        const change = coin.custom_24h_change;
                         const changeDisplay = change > 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`;
                         const changeClass = change > 0 ? 'positive' : 'negative';
                         const currentRank = index + 1;
@@ -220,7 +265,7 @@
 
         function startAutoRefresh() {
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(fetchTopGainers, 10 * 1000); // 10 seconds
+            autoRefreshInterval = setInterval(fetchTopGainers, 60 * 1000); // 1 minute due to increased API load
         }
 
         document.addEventListener('visibilitychange', () => {
