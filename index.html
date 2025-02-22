@@ -23,10 +23,6 @@
         }
         th {
             background-color: #f5f5f5;
-            cursor: pointer;
-        }
-        th:hover {
-            background-color: #e0e0e0;
         }
         .positive {
             color: #00cc00;
@@ -53,17 +49,6 @@
             height: 24px;
             vertical-align: middle;
             margin-right: 5px;
-        }
-        .sort-arrow {
-            display: inline-block;
-            margin-left: 5px;
-            font-size: 12px;
-        }
-        .sort-arrow.up {
-            color: #00cc00;
-        }
-        .sort-arrow.down {
-            color: #dc3545;
         }
         #refreshBtn, #downloadBtn {
             padding: 10px 20px;
@@ -94,34 +79,13 @@
     <table id="gainersTable">
         <thead>
             <tr>
-                <th>
-                    Rank
-                    <span class="sort-arrow" id="sortRank" onclick="sortTable('rank')">↑↓</span>
-                </th>
-                <th>
-                    Name
-                    <span class="sort-arrow" id="sortName" onclick="sortTable('name')">↑↓</span>
-                </th>
-                <th>
-                    Symbol
-                    <span class="sort-arrow" id="sortSymbol" onclick="sortTable('symbol')">↑↓</span>
-                </th>
-                <th>
-                    Price (USD)
-                    <span class="sort-arrow" id="sortPrice" onclick="sortTable('price')">↑↓</span>
-                </th>
-                <th>
-                    24h Change
-                    <span class="sort-arrow" id="sort24h" onclick="sortTable('24h')">↑↓</span>
-                </th>
-                <th>
-                    Market Cap (USD)
-                    <span class="sort-arrow" id="sortMarketCap" onclick="sortTable('marketCap')">↑↓</span>
-                </th>
-                <th>
-                    24h Volume (USD)
-                    <span class="sort-arrow" id="sortVolume" onclick="sortTable('volume')">↑↓</span>
-                </th>
+                <th>Rank</th>
+                <th>Name</th>
+                <th>Symbol</th>
+                <th>Price (USD)</th>
+                <th>24h Change</th>
+                <th>Market Cap (USD)</th>
+                <th>24h Volume (USD)</th>
             </tr>
         </thead>
         <tbody id="gainersBody"></tbody>
@@ -137,23 +101,6 @@
         let autoRefreshInterval;
         let previousRankings = {};
         let latestGainers = [];
-        let sortDirection = {
-            'rank': 'asc',
-            'name': 'asc',
-            'symbol': 'asc',
-            'price': 'asc',
-            '24h': 'desc',
-            'marketCap': 'desc',
-            'volume': 'desc'
-        };
-        let lastSorted = '24h'; // Default sort by 24h (descending)
-
-        function isStablecoin(coin) {
-            const price = coin.current_price;
-            return price >= 0.95 && price <= 1.05;
-        }
-
-        const minVolume = 65000000;
 
         async function fetchTopGainers() {
             statusElement.textContent = 'Loading data...';
@@ -172,49 +119,10 @@
                 const coins = await response.json();
                 console.log('Total coins received:', coins.length);
 
-                const filteredCoins = coins.filter(coin => 
-                    !isStablecoin(coin) && coin.total_volume >= minVolume
-                );
-                console.log('Filtered coins:', filteredCoins.length);
-
-                let topGainers = [];
-                if (lastSorted === 'rank') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['rank'] === 'asc' ? 
-                            a.market_cap_rank - b.market_cap_rank : b.market_cap_rank - a.market_cap_rank)
-                        .slice(0, 10);
-                } else if (lastSorted === 'name') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['name'] === 'asc' ? 
-                            a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
-                        .slice(0, 10);
-                } else if (lastSorted === 'symbol') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['symbol'] === 'asc' ? 
-                            a.symbol.localeCompare(b.symbol) : b.symbol.localeCompare(a.symbol))
-                        .slice(0, 10);
-                } else if (lastSorted === 'price') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['price'] === 'asc' ? 
-                            a.current_price - b.current_price : b.current_price - a.current_price)
-                        .slice(0, 10);
-                } else if (lastSorted === '24h') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['24h'] === 'desc' ? 
-                            b.price_change_percentage_24h - a.price_change_percentage_24h : 
-                            a.price_change_percentage_24h - b.price_change_percentage_24h)
-                        .slice(0, 10);
-                } else if (lastSorted === 'marketCap') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['marketCap'] === 'desc' ? 
-                            b.market_cap - a.market_cap : a.market_cap - b.market_cap)
-                        .slice(0, 10);
-                } else if (lastSorted === 'volume') {
-                    topGainers = filteredCoins
-                        .sort((a, b) => sortDirection['volume'] === 'desc' ? 
-                            b.total_volume - a.total_volume : a.total_volume - b.total_volume)
-                        .slice(0, 10);
-                }
+                const topGainers = coins
+                    .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
+                    .slice(0, 10);
+                console.log('Top gainers:', topGainers.length);
 
                 latestGainers = topGainers;
 
@@ -222,8 +130,8 @@
                 tbody.innerHTML = '';
 
                 if (topGainers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7">No coins meet the criteria (volume ≥ $65M, non-stablecoin).</td></tr>';
-                    statusElement.textContent = 'No data available matching filters.';
+                    tbody.innerHTML = '<tr><td colspan="7">No coins available.</td></tr>';
+                    statusElement.textContent = 'No data available.';
                     statusElement.className = 'error';
                 } else {
                     topGainers.forEach((coin, index) => {
@@ -277,19 +185,6 @@
                         '<tr><td colspan="7">Error loading data. Check console for details.</td></tr>';
                 }
             }
-        }
-
-        function sortTable(column) {
-            lastSorted = column;
-            sortDirection[column] = sortDirection[column] === 'asc' ? 'desc' : 'asc';
-
-            const arrows = document.querySelectorAll('.sort-arrow');
-            arrows.forEach(arrow => arrow.textContent = '↑↓');
-            const currentArrow = document.getElementById(`sort${column.charAt(0).toUpperCase() + column.slice(1)}`);
-            currentArrow.textContent = sortDirection[column] === 'desc' ? '↑' : '↓';
-            currentArrow.className = `sort-arrow ${sortDirection[column] === 'desc' ? 'up' : 'down'}`;
-
-            fetchTopGainers();
         }
 
         function downloadTradingViewFile() {
